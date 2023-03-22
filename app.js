@@ -32,14 +32,17 @@ app.use(passport.initialize());
 app.use(passport.session());
 
 // Connect mongoose to server
-mongoose.connect("mongodb://127.0.0.1:27017/blogUserDB");
+const dbName = "gamingBlogUserDB";
+const mongoCluster = process.env.MONGO_CLUSTER;
+mongoose.connect(mongoCluster+dbName);
 
 // Make schema
 const userSchema = new mongoose.Schema({
     email: String,
+    userName: String,
     password: String,
     googleId: String,
-    secret: String
+    posts: [{title: String, content: String}]
 });
 
 // Add the way that passport hashes and salts passwords into the schema (doesnt have todo with sessions)
@@ -81,14 +84,17 @@ passport.use(new GoogleStrategy({
     // - Finds the user by googleId in the schema. If we did not have googleId
     // in the schema then it would just keep creating new users even Vue.config.warnHandler = function (msg, vm, trace) {
     // signing in with the same user
-    User.findOrCreate({ googleId: profile.id }, function (err, user) {
+    console.log(profile);
+    User.findOrCreate({ googleId: profile.id}, function (err, user) {
+      user.userName = profile.displayName;
+      user.save();
       return cb(err, user);
     });
   }
 ));
 
 app.get("/", function(req, res) {
-    res.render("home");
+    res.redirect("/home");
 });
 
 app.get("/auth/google", 
@@ -113,7 +119,7 @@ app.get("/auth/google/secrets",
   passport.authenticate('google', { failureRedirect: '/login' }),
   function(req, res) {
     // If successful authentication, redirect home.
-    res.redirect('/secrets');
+    res.redirect('/profile');
   });
 
 app.get("/login", function(req, res) {
@@ -132,23 +138,15 @@ app.get("/submit", function(req, res) {
     }
 })
 
-app.post("/submit", function(req, res) {
-    const submittedSecret = req.body.secret;
-    console.log(req.user.id);
-    const username = req.user.id;
-    // passport saves the users details into the request variable
-    User.findById(username, function(err, foundUser) {
-       if (err) {
-        console.log(err);
-       } else {
-        foundUser.secret = submittedSecret;
-        foundUser.save(function() {
-            res.redirect("/secrets");
-        });
-       }
-    });
-
-})
+app.get("/home", async function(req, res) {
+    User.find({"posts": {$ne:null}}, function(err, foundUsers) {
+        if (err) {
+            console.log(err)
+        } else {
+            res.render("home", {usersWithPosts: foundUsers});
+        }
+    })
+});
 
 app.get("/logout", function(req, res) {
     req.logout(function(err) {
@@ -160,6 +158,43 @@ app.get("/logout", function(req, res) {
     });
 });
 
+app.get("/profile", function(req, res) {
+    if(req.isAuthenticated()) {
+        const username = req.user.id;
+        User.findById(username, function(err, foundUser) {
+            if (err) {
+             console.log(err);
+            } else {
+             res.render("profile", {user: foundUser})
+            }
+         });
+    } else {
+        res.redirect("/access-account")
+    }
+})
+
+app.get("/access-account", function(req, res) {
+    res.render("access-account");
+})
+
+app.post("/submit", function(req, res) {
+    const title = req.body.title;
+    const content = req.body.content;
+    const username = req.user.id;
+    // passport saves the users details into the request variable
+    User.findById(username, function(err, foundUser) {
+       if (err) {
+        console.log(err);
+       } else {
+        foundUser.posts.push({title: title, content: content});
+        foundUser.save(function() {
+            res.redirect("/profile");
+        });
+       }
+    });
+
+})
+
 app.post("/register", function(req, res) {
     // A passport function that registers our user (we get this function by adding passport as a plugin to our schema)
     // active: false means 
@@ -170,7 +205,7 @@ app.post("/register", function(req, res) {
         } else {
             // Authenticates the user (gives them a session) so they can stay signed in
             passport.authenticate("local")(req, res, function() {
-                res.redirect("/secrets");
+                res.redirect("/profile");
             });
         }
     });
@@ -189,18 +224,8 @@ app.post("/login", function(req, res) {
         } else {
             // Authenticates the user (gives them a session) so they can stay signed in
             passport.authenticate("local")(req, res, function() {
-                res.redirect("/secrets");
+                res.redirect("/profile");
             });
-        }
-    })
-});
-
-app.get("/secrets", async function(req, res) {
-    User.find({"secret": {$ne:null}}, function(err, foundUsers) {
-        if (err) {
-            console.log(err)
-        } else {
-            res.render("secrets", {usersWithSecrets: foundUsers});
         }
     })
 });

@@ -4,8 +4,8 @@ const express = require("express");
 const bodyParser = require("body-parser");
 const ejs = require("ejs");
 const mongoose = require("mongoose");
+const _ = require("lodash");
 
-// we no longer us md5 because it is too fast
 const session = require("express-session");
 const passport = require("passport");
 const passportLocalMongoose = require("passport-local-mongoose");
@@ -177,8 +177,27 @@ app.get("/access-account", function(req, res) {
     res.render("access-account");
 })
 
+app.get("/posts/:postTitle", function(req, res){
+    const requestedTitle = _.capitalize(req.params.postTitle);
+    console.log("Requested title: " + requestedTitle);
+    User.findOne({posts:{$elemMatch : {title: requestedTitle}}}, (err, foundUser) => {
+      if (!err) {
+        if (foundUser) {
+          const post = foundUser.posts.find((post) => {
+            return post.title = requestedTitle;
+          })
+          res.render("post", {title:post.title, content: post.content});
+        } else {
+          res.redirect("/");
+        }
+      } else {
+        console.log(err)
+      }
+    });
+  });
+
 app.post("/submit", function(req, res) {
-    const title = req.body.title;
+    const title = _.capitalize(req.body.title);
     const content = req.body.content;
     const username = req.user.id;
     // passport saves the users details into the request variable
@@ -192,7 +211,6 @@ app.post("/submit", function(req, res) {
         });
        }
     });
-
 })
 
 app.post("/register", function(req, res) {
